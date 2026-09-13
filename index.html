@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#7C9885" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Трезвость" />
+  <title>Трезвость</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Source+Serif+Pro:wght@400;600&family=Inter:wght@400;500;600&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Inter, -apple-system, sans-serif; background: #F4F2F8; }
+    button { font-family: inherit; cursor: pointer; }
+    button:active { transform: scale(0.98); }
+    input[type="time"] { font-family: inherit; }
+    @keyframes bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-14px)} }
+    @keyframes stepA { 0%,100%{transform:translate(-12px,0)} 50%{transform:translate(12px,-6px)} }
+    @keyframes stepB { 0%,100%{transform:translate(12px,-6px)} 50%{transform:translate(-12px,0)} }
+    @keyframes sway { 0%,100%{transform:rotate(-8deg)} 50%{transform:rotate(8deg)} }
+    @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.12)} }
+    @keyframes heart { 0%,100%{transform:scale(1)} 20%{transform:scale(1.2)} 40%{transform:scale(1)} 60%{transform:scale(1.1)} }
+    @keyframes ripple { 0%{transform:scale(.5);opacity:.5} 100%{transform:scale(1.8);opacity:0} }
+    @keyframes floatZ { 0%{transform:translateY(0);opacity:0} 40%{opacity:1} 100%{transform:translateY(-16px);opacity:0} }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+
+  <script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+const ACCENT = "#7C9885";
+const WARM = "#C79A78";
+const KEY = "sobriety-onefile-v1";
+
+const TRIGGERS = [
+  { id: "stress", label: "Стресс, тревога" },
+  { id: "boredom", label: "Скука вечером" },
+  { id: "habit", label: "Привычка, на автомате" },
+  { id: "social", label: "Компания, повод" },
+];
+
+const TASKS = {
+  physical: [
+    { id: "walk", text: "Пройдись быстрым шагом 15 минут на улице", anim: "walk" },
+    { id: "squat", text: "Сделай 20 приседаний и 20 отжиманий", anim: "squat" },
+    { id: "stretch", text: "10 минут растяжки под тихую музыку", anim: "stretch" },
+    { id: "shower", text: "Прими контрастный душ", anim: "shower" },
+    { id: "dance", text: "Включи музыку и потанцуй 10 минут", anim: "walk" },
+    { id: "cold", text: "Ополосни лицо холодной водой 30 секунд", anim: "shower" },
+  ],
+  growth: [
+    { id: "book", text: "Прочитай 10 страниц книги", anim: "book" },
+    { id: "podcast", text: "Послушай один эпизод подкаста", anim: "podcast" },
+    { id: "write", text: "Напиши 3 вещи, которые сегодня получились", anim: "write" },
+    { id: "video", text: "Посмотри короткую лекцию по интересной теме", anim: "video" },
+    { id: "skill", text: "Потренируй навык 15 минут", anim: "book" },
+    { id: "plan", text: "Запиши одну маленькую цель на месяц", anim: "write" },
+  ],
+  home: [
+    { id: "drawer", text: "Разбери один ящик или полку", anim: "home" },
+    { id: "dishes", text: "Помой посуду и протри стол", anim: "home" },
+    { id: "tea", text: "Свари чай и приведи в порядок один угол", anim: "tea" },
+    { id: "list", text: "Список дел на завтра — 3 пункта", anim: "write" },
+    { id: "plant", text: "Полей цветы, проветри, застели постель", anim: "plant" },
+    { id: "sleep", text: "Подготовь спальню ко сну, ляг на полчаса раньше", anim: "sleep" },
+  ],
+  mind: [
+    { id: "gratitude", text: "Напиши 3 вещи, за которые благодарен", anim: "heart" },
+    { id: "ground", text: "5-4-3-2-1: 5 вещей вокруг, 4 звука, 3 ощущения", anim: "brain" },
+    { id: "call", text: "Позвони или напиши близкому без повода", anim: "call" },
+    { id: "nameit", text: "Назови эмоцию, которую сейчас чувствуешь", anim: "brain" },
+    { id: "compassion", text: "Скажи себе: «Мне сейчас нелегко, и это нормально»", anim: "heart" },
+    { id: "values", text: "Запиши, какую ценность поддерживает трезвость сегодня", anim: "write" },
+  ],
+};
+
+const WEIGHTS = {
+  stress: ["mind", "mind", "growth", "physical", "home"],
+  boredom: ["physical", "mind", "home", "growth"],
+  habit: ["home", "mind", "growth", "physical"],
+  social: ["mind", "mind", "growth", "physical", "home"],
+};
+
+const CAT = {
+  physical: "Тело",
+  growth: "Развитие",
+  home: "Быт",
+  mind: "Психология",
+};
+
+const empty = {
+  streakStartedAt: null,
+  longestStreakDays: 0,
+  journal: [],
+  completedTasks: 0,
+  reminders: { morning: "09:00", evening: "21:00" },
+  checkins: { morningDate: null, eveningDate: null },
+  dailyTask: null,
+};
+
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+function minNow() {
+  const d = new Date();
+  return d.getHours() * 60 + d.getMinutes();
+}
+function minOf(t) {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+}
+function daysBetween(iso) {
+  if (!iso) return 0;
+  const a = new Date(iso); a.setHours(0, 0, 0, 0);
+  const b = new Date(); b.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.floor((b - a) / 86400000));
+}
+function fmt(iso) {
+  return new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+}
+function daysWord(n) {
+  const a = n % 10, b = n % 100;
+  if (b >= 11 && b <= 14) return "дней";
+  if (a === 1) return "день";
+  if (a >= 2 && a <= 4) return "дня";
+  return "дней";
+}
+function pick(pool) {
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+function pickDaily() {
+  const cat = pick(["physical", "growth", "home", "mind"]);
+  return { category: cat, ...pick(TASKS[cat]) };
+}
+function pickSos(trigger) {
+  const order = WEIGHTS[trigger] || ["physical", "growth", "home"];
+  const cat = pick(order);
+  return { category: cat, ...pick(TASKS[cat]) };
+}
+
+/* icons as simple SVG */
+function Ic({ d, size = 18, color = ACCENT, style }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}>
+      {d}
+    </svg>
+  );
+}
+const I = {
+  flame: <><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></>,
+  alert: <><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></>,
+  check: <><polyline points="20 6 9 17 4 12"/></>,
+  x: <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>,
+  sun: <><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></>,
+  moon: <><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></>,
+  clock: <><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>,
+  check2: <><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></>,
+  trend: <><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></>,
+  cal: <><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></>,
+  bell: <><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></>,
+  copy: <><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>,
+  reset: <><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></>,
+  spark: <><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></>,
+  dl: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></>,
+  chart: <><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></>,
+};
+
+function Icon({ name, size = 18, color = ACCENT }) {
+  return <Ic d={I[name]} size={size} color={color} />;
+}
+
+/* breathing */
+const PHASES = [
+  { label: "Вдох", s: 4 },
+  { label: "Задержка", s: 4 },
+  { label: "Выдох", s: 6 },
+];
+const CLEN = 14;
+const TOTAL = 42;
+
+function Breathing({ onDone }) {
+  const [el, setEl] = useState(0);
+  const done = useRef(false);
+  useEffect(() => {
+    const t = setInterval(() => setEl((e) => e + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => {
+    if (el >= TOTAL && !done.current) {
+      done.current = true;
+      onDone();
+    }
+  }, [el, onDone]);
+
+  const ce = el % CLEN;
+  let acc = 0, pi = 0, left = 1;
+  for (let i = 0; i < 3; i++) {
+    if (ce < acc + PHASES[i].s) {
+      pi = i;
+      left = acc + PHASES[i].s - ce;
+      break;
+    }
+    acc += PHASES[i].s;
+  }
+  const cycle = Math.min(Math.floor(el / CLEN) + 1, 3);
+  const ph = PHASES[pi];
+  const scale = ph.label === "Вдох" ? 1.25 : ph.label === "Выдох" ? 0.85 : 1.1;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "12px 0" }}>
+      <div style={{
+        width: 128, height: 128, borderRadius: "50%", border: `1px solid ${ACCENT}55`,
+        background: `radial-gradient(circle at 50% 40%, ${ACCENT}22, ${ACCENT}05)`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        transform: `scale(${scale})`, transition: "transform 3.8s ease-in-out",
+      }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontFamily: "Source Serif Pro, Georgia, serif", fontSize: 19, color: "#33403C" }}>{ph.label}</div>
+          <div style={{ fontSize: 13, color: "#7C8C86", marginTop: 2 }}>{left}</div>
+        </div>
+      </div>
+      <div style={{ fontSize: 12.5, color: "#A9B6B0" }}>Цикл {cycle} из 3</div>
+    </div>
+  );
+}
+
+function TaskAnim({ anim }) {
+  const stage = { display: "flex", alignItems: "center", justifyContent: "center", height: 56 };
+  const dot = { width: 12, height: 12, borderRadius: "50%", background: ACCENT };
+  if (anim === "squat") return <div style={stage}><div style={{ ...dot, animation: "bob 1s ease-in-out infinite" }} /></div>;
+  if (anim === "walk") return (
+    <div style={stage}>
+      <div style={{ ...dot, animation: "stepA .9s ease-in-out infinite" }} />
+      <div style={{ ...dot, marginLeft: 10, animation: "stepB .9s ease-in-out infinite" }} />
+    </div>
+  );
+  if (anim === "stretch") return <div style={stage}><div style={{ width: 6, height: 40, borderRadius: 4, background: ACCENT, animation: "sway 1.3s ease-in-out infinite", transformOrigin: "bottom" }} /></div>;
+  if (anim === "shower" || anim === "video") return (
+    <div style={{ ...stage, position: "relative" }}>
+      <div style={{ position: "absolute", width: 44, height: 44, borderRadius: "50%", border: `1.5px solid ${ACCENT}`, animation: "ripple 1.8s ease-out infinite" }} />
+      <div style={{ width: 14, height: 14, borderRadius: "50%", background: ACCENT }} />
+    </div>
+  );
+  if (anim === "heart") return <div style={stage}><span style={{ fontSize: 28, animation: "heart 1.3s ease-in-out infinite" }}>💚</span></div>;
+  if (anim === "brain") return <div style={stage}><span style={{ fontSize: 28, animation: "pulse 1.4s ease-in-out infinite" }}>🧠</span></div>;
+  if (anim === "call") return <div style={stage}><span style={{ fontSize: 28, animation: "sway .9s ease-in-out infinite" }}>📞</span></div>;
+  if (anim === "sleep") return (
+    <div style={stage}>
+      <span style={{ fontSize: 26 }}>🌙</span>
+      {[0, 1, 2].map((i) => (
+        <span key={i} style={{ marginLeft: 4, fontSize: 10 + i * 3, color: ACCENT, animation: `floatZ 2.4s ease-in-out ${i * 0.5}s infinite` }}>z</span>
+      ))}
+    </div>
+  );
+  if (anim === "tea") return <div style={stage}><span style={{ fontSize: 28 }}>🍵</span></div>;
+  if (anim === "plant") return <div style={stage}><span style={{ fontSize: 28 }}>🌿</span></div>;
+  if (anim === "home") return <div style={stage}><span style={{ fontSize: 28 }}>🏠</span></div>;
+  if (anim === "book") return <div style={stage}><span style={{ fontSize: 28, animation: "sway 1.6s ease-in-out infinite" }}>📖</span></div>;
+  if (anim === "podcast") return <div style={stage}><span style={{ fontSize: 28 }}>🎧</span></div>;
+  if (anim === "write") return <div style={stage}><span style={{ fontSize: 28 }}>✏️</span></div>;
+  return <div style={stage}><span style={{ fontSize: 28 }}>✨</span></div>;
+}
+
+function App() {
+  const [state, setState] = useState(empty);
+  const [loaded, setLoaded] = useState(false);
+  const [sos, setSos] = useState(false);
+  const [sosStep, setSosStep] = useState("trigger");
+  const [trigger, setTrigger] = useState(null);
+  const [task, setTask] = useState(null);
+  const [resetAsk, setResetAsk] = useState(false);
+  const [modal, setModal] = useState(null);
+  const [notif, setNotif] = useState(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
+  const [copyMsg, setCopyMsg] = useState("Скопировать текст напоминаний");
+  const [showWeek, setShowWeek] = useState(false);
+  const [, tick] = useState(0);
+  const ref = useRef(state);
+  ref.current = state;
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) setState({ ...empty, ...JSON.parse(raw) });
+      else {
+        const s = { ...empty, streakStartedAt: new Date().toISOString() };
+        setState(s);
+        localStorage.setItem(KEY, JSON.stringify(s));
+      }
+    } catch {
+      setState({ ...empty, streakStartedAt: new Date().toISOString() });
+    }
+    setLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    const iv = setInterval(() => tick((t) => t + 1), 60000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const persist = useCallback((next) => {
+    setState(next);
+    try { localStorage.setItem(KEY, JSON.stringify(next)); } catch {}
+  }, []);
+
+  const today = todayStr();
+  const days = daysBetween(state.streakStartedAt);
+
+  useEffect(() => {
+    if (!loaded) return;
+    if (!state.dailyTask || state.dailyTask.date !== today) {
+      const t = pickDaily();
+      persist({ ...ref.current, dailyTask: { ...t, date: today, outcome: null } });
+    }
+  }, [loaded, today]);
+
+  useEffect(() => {
+    if (notif !== "granted") return;
+    const iv = setInterval(() => {
+      const s = ref.current;
+      const t = todayStr();
+      const now = minNow();
+      try {
+        if (s.checkins.morningDate !== t && now >= minOf(s.reminders.morning)) {
+          new Notification("Доброе утро", { body: "Утренний чек-ин и задача дня", tag: "m" });
+        }
+        if (s.checkins.eveningDate !== t && now >= minOf(s.reminders.evening)) {
+          new Notification("Как прошёл день?", { body: "Вечерний итог в дневнике", tag: "e" });
+        }
+      } catch {}
+    }, 60000);
+    return () => clearInterval(iv);
+  }, [notif]);
+
+  const mDone = state.checkins.morningDate === today;
+  const eDone = state.checkins.eveningDate === today;
+  const mTime = minNow() >= minOf(state.reminders.morning);
+  const eTime = minNow() >= minOf(state.reminders.evening);
+
+  function morning(outcome) {
+    const dt = state.dailyTask;
+    const entry = {
+      id: Date.now(), date: new Date().toISOString(), trigger: "Утренний чек-ин",
+      category: dt?.category, task: dt?.text, outcome,
+    };
+    persist({
+      ...state,
+      checkins: { ...state.checkins, morningDate: today },
+      dailyTask: dt ? { ...dt, outcome } : dt,
+      journal: [entry, ...state.journal].slice(0, 200),
+      completedTasks: outcome === "done" ? state.completedTasks + 1 : state.completedTasks,
+    });
+    setModal(null);
+  }
+
+  function evening(had) {
+    const entry = {
+      id: Date.now(), date: new Date().toISOString(), trigger: "Вечерний итог",
+      task: had ? "Хотелось выпить, но ты справился" : "Без желания выпить сегодня", outcome: "checkin",
+    };
+    persist({
+      ...state,
+      checkins: { ...state.checkins, eveningDate: today },
+      journal: [entry, ...state.journal].slice(0, 200),
+    });
+    setModal(null);
+  }
+
+  function relapse() {
+    const longest = Math.max(state.longestStreakDays, days);
+    const entry = {
+      id: Date.now(), date: new Date().toISOString(), trigger: "Срыв",
+      task: `Держался(ась) ${days} ${daysWord(days)}`, outcome: "relapse",
+    };
+    persist({
+      ...state,
+      streakStartedAt: new Date().toISOString(),
+      longestStreakDays: longest,
+      journal: [entry, ...state.journal].slice(0, 200),
+    });
+    setResetAsk(false);
+  }
+
+  function markSos(did) {
+    const entry = {
+      id: Date.now(), date: new Date().toISOString(),
+      trigger: TRIGGERS.find((t) => t.id === trigger)?.label || "",
+      category: task?.category, task: task?.text, outcome: did ? "done" : "skipped",
+    };
+    persist({
+      ...state,
+      journal: [entry, ...state.journal].slice(0, 200),
+      completedTasks: did ? state.completedTasks + 1 : state.completedTasks,
+    });
+    setSosStep("done");
+  }
+
+  const onBreathDone = useCallback(() => {
+    setTask(pickSos(trigger));
+    setSosStep("task");
+  }, [trigger]);
+
+  async function askNotif() {
+    if (typeof Notification === "undefined") { setNotif("unsupported"); return; }
+    try {
+      const p = await Notification.requestPermission();
+      setNotif(p);
+    } catch { setNotif("unsupported"); }
+  }
+
+  async function copyRem() {
+    const text = `Трезвость — утро (${state.reminders.morning}): чек-ин и задача дня\nТрезвость — вечер (${state.reminders.evening}): вечерний итог`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyMsg("Скопировано!");
+      setTimeout(() => setCopyMsg("Скопировать текст напоминаний"), 2000);
+    } catch {
+      setCopyMsg("Не удалось — скопируй вручную");
+    }
+  }
+
+  function exportJ() {
+    const blob = new Blob([JSON.stringify({ days, journal: state.journal }, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `trezvost-${today}.json`;
+    a.click();
+  }
+
+  /* week dots */
+  const week = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    const iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    const entries = state.journal.filter((e) => e.date.slice(0, 10) === iso);
+    const hasC = entries.some((e) => (e.trigger || "").includes("чек-ин") || (e.trigger || "").includes("итог"));
+    const hasT = entries.some((e) => e.outcome === "done");
+    const labels = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+    return { iso, label: labels[d.getDay()], hasC, hasT, isToday: iso === today };
+  });
+
+  if (!loaded) {
+    return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#7C8C86" }}>Загрузка…</div>;
+  }
+
+  const page = { minHeight: "100vh", background: "linear-gradient(180deg,#F4F2F8 0%,#EEF3EF 55%,#ECF1EC 100%)" };
+  const wrap = { maxWidth: 480, margin: "0 auto", padding: "28px 18px 64px" };
+  const card = { background: "#fff", border: "1px solid #E4E3EC", borderRadius: 20, padding: "22px 20px", boxShadow: "0 8px 24px rgba(60,60,90,.05)" };
+  const title = { fontFamily: "Source Serif Pro, Georgia, serif", fontSize: 15, color: "#33403C", marginBottom: 12 };
+  const ghost = { width: "100%", background: "transparent", color: "#7C8C86", border: "1px solid #E4E3EC", borderRadius: 14, padding: "11px 14px", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 };
+  const row = { display: "flex", alignItems: "center", gap: 12, width: "100%", background: "#fff", border: "1px solid #E4E3EC", borderRadius: 14, padding: "13px 14px", textAlign: "left" };
+  const overlay = { position: "fixed", inset: 0, background: "rgba(51,64,60,.28)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 50 };
+  const modalBox = { position: "relative", width: "100%", maxWidth: 380, background: "#FFFDFB", border: "1px solid #E9E8F0", borderRadius: 22, padding: "28px 22px 24px", boxShadow: "0 20px 50px rgba(60,60,90,.14)" };
+  const mTitle = { fontFamily: "Source Serif Pro, Georgia, serif", fontSize: 20, color: "#33403C" };
+  const mSub = { fontSize: 13.5, color: "#7C8C86", marginTop: 8, lineHeight: 1.55 };
+  const tBtn = { textAlign: "left", background: "#F6F5FA", border: "1px solid #E9E8F0", color: "#33403C", borderRadius: 14, padding: "13px 15px", fontSize: 14, width: "100%" };
+  const primary = { flex: 1, background: ACCENT, color: "#fff", border: "none", borderRadius: 14, padding: "13px 14px", fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 };
+  const gModal = { flex: 1, background: "transparent", border: "1px solid #E4E3EC", color: "#7C8C86", borderRadius: 14, padding: "13px 14px", fontSize: 14 };
+
+  return (
+    <div style={page}>
+      <div style={wrap}>
+        <div style={{ fontSize: 13, color: "#A9B6B0", marginBottom: 8 }}>Твой путь</div>
+
+        <div style={{ ...card, marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Icon name="flame" size={22} />
+            <div style={{ fontFamily: "Source Serif Pro, Georgia, serif", fontSize: 46, color: "#33403C", lineHeight: 1 }}>{days}</div>
+          </div>
+          <div style={{ color: "#7C8C86", fontSize: 14, marginTop: 6 }}>{daysWord(days)} без алкоголя</div>
+          {state.longestStreakDays > 0 && (
+            <div style={{ color: "#A9B6B0", fontSize: 12.5, marginTop: 12 }}>
+              Лучшая серия: {state.longestStreakDays} {daysWord(state.longestStreakDays)}
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={() => { setSos(true); setSosStep("trigger"); setTrigger(null); setTask(null); }}
+          style={{
+            width: "100%", background: WARM, color: "#FFFDF9", border: "none", borderRadius: 16,
+            padding: "16px", fontSize: 14.5, fontWeight: 600, display: "flex", alignItems: "center",
+            justifyContent: "center", gap: 8, boxShadow: "0 6px 18px rgba(199,154,120,.3)",
+          }}
+        >
+          <Icon name="alert" size={18} color="#FFFDF9" />
+          Хочется выпить — нужна помощь сейчас
+        </button>
+
+        <button onClick={() => setResetAsk(true)} style={{ ...ghost, marginTop: 10 }}>
+          <Icon name="reset" size={14} color="#7C8C86" /> Был срыв — начать заново
+        </button>
+
+        <div style={{ marginTop: 28 }}>
+          <div style={title}>Сегодня</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button style={{ ...row, opacity: mDone ? 0.6 : 1 }} onClick={() => !mDone && setModal("morning")}>
+              <Icon name="sun" />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, color: "#33403C" }}>Утренний чек-ин и задача дня</div>
+                <div style={{ fontSize: 12, color: "#A9B6B0", marginTop: 1 }}>{mDone ? "Готово" : mTime ? "Пора" : `в ${state.reminders.morning}`}</div>
+              </div>
+              {mDone ? <Icon name="check2" /> : <Icon name="clock" color="#A9B6B0" size={16} />}
+            </button>
+            <button style={{ ...row, opacity: eDone ? 0.6 : 1 }} onClick={() => !eDone && setModal("evening")}>
+              <Icon name="moon" />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, color: "#33403C" }}>Вечерний итог дня</div>
+                <div style={{ fontSize: 12, color: "#A9B6B0", marginTop: 1 }}>{eDone ? "Готово" : eTime ? "Пора" : `в ${state.reminders.evening}`}</div>
+              </div>
+              {eDone ? <Icon name="check2" /> : <Icon name="clock" color="#A9B6B0" size={16} />}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+          <div style={{ ...card, flex: 1, borderRadius: 16, padding: 16 }}>
+            <Icon name="trend" size={16} color="#A9B6B0" />
+            <div style={{ fontFamily: "Source Serif Pro, Georgia, serif", fontSize: 24, color: "#33403C", marginTop: 8 }}>{state.completedTasks}</div>
+            <div style={{ fontSize: 11.5, color: "#A9B6B0" }}>задач выполнено</div>
+          </div>
+          <div style={{ ...card, flex: 1, borderRadius: 16, padding: 16 }}>
+            <Icon name="cal" size={16} color="#A9B6B0" />
+            <div style={{ fontFamily: "Source Serif Pro, Georgia, serif", fontSize: 24, color: "#33403C", marginTop: 8 }}>{state.journal.length}</div>
+            <div style={{ fontSize: 11.5, color: "#A9B6B0" }}>записей в дневнике</div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 22 }}>
+          <button onClick={() => setShowWeek((v) => !v)} style={{ background: "none", border: "none", display: "flex", alignItems: "center", gap: 6, marginBottom: 10, color: "#33403C" }}>
+            <Icon name="chart" size={15} /> <span style={title}>Неделя {showWeek ? "▴" : "▾"}</span>
+          </button>
+          {showWeek && (
+            <div style={{ ...card, borderRadius: 16, padding: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                {week.map((d) => (
+                  <div key={d.iso} style={{ flex: 1, textAlign: "center" }}>
+                    <div style={{ fontSize: 10, color: d.isToday ? ACCENT : "#A9B6B0", fontWeight: d.isToday ? 600 : 400 }}>{d.label}</div>
+                    <div style={{ width: 10, height: 10, borderRadius: "50%", margin: "6px auto 4px", background: d.hasC ? ACCENT : "#A9B6B040", border: d.isToday && !d.hasC ? `2px solid ${ACCENT}` : "none" }} />
+                    <div style={{ width: 10, height: 10, borderRadius: 3, margin: "0 auto", background: d.hasT ? WARM : "#A9B6B040" }} />
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 14, marginTop: 12, borderTop: "1px solid #E4E3EC", paddingTop: 10, fontSize: 11.5, color: "#7C8C86" }}>
+                <span>● чек-ин</span>
+                <span style={{ color: WARM }}>■ задача</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginTop: 22 }}>
+          <div style={title}>Напоминания</div>
+          <div style={{ ...card, borderRadius: 16, padding: 16 }}>
+            <div style={{ display: "flex", gap: 10 }}>
+              {["morning", "evening"].map((k) => (
+                <label key={k} style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                  <span style={{ fontSize: 11.5, color: "#A9B6B0" }}>{k === "morning" ? "Утро" : "Вечер"}</span>
+                  <input
+                    type="time"
+                    value={state.reminders[k]}
+                    onChange={(e) => persist({ ...state, reminders: { ...state.reminders, [k]: e.target.value } })}
+                    style={{ border: "1px solid #E4E3EC", borderRadius: 10, padding: "8px 10px", fontSize: 14, color: "#33403C", background: "#F6F5FA" }}
+                  />
+                </label>
+              ))}
+            </div>
+            <button onClick={askNotif} style={{ ...ghost, marginTop: 12 }}>
+              <Icon name="bell" size={14} color="#7C8C86" />
+              {notif === "granted" ? "Уведомления включены (вкладка открыта)" :
+               notif === "denied" ? "Уведомления заблокированы" :
+               notif === "unsupported" ? "Уведомления недоступны" : "Включить уведомления браузера"}
+            </button>
+            <p style={{ fontSize: 12, color: "#A9B6B0", marginTop: 10, lineHeight: 1.5 }}>
+              Надёжнее добавить напоминания в телефон. Скопируй текст:
+            </p>
+            <button onClick={copyRem} style={{ ...ghost, marginTop: 8 }}>
+              <Icon name="copy" size={14} color="#7C8C86" /> {copyMsg}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 28 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div style={{ ...title, marginBottom: 0 }}>Дневник</div>
+            {state.journal.length > 0 && (
+              <button onClick={exportJ} style={{ background: "none", border: "none", fontSize: 12, color: "#7C8C86", display: "flex", alignItems: "center", gap: 4 }}>
+                <Icon name="dl" size={14} color="#7C8C86" /> Экспорт
+              </button>
+            )}
+          </div>
+          {state.journal.length === 0 ? (
+            <div style={{ color: "#A9B6B0", fontSize: 13.5, lineHeight: 1.5 }}>
+              Здесь появятся моменты, когда хотелось выпить, и что ты сделал вместо этого.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {state.journal.slice(0, 14).map((e) => (
+                <div key={e.id} style={{ display: "flex", gap: 12, padding: "12px 14px", background: "#fff", borderRadius: 14, border: "1px solid #E9E8F0" }}>
+                  <div style={{ width: 46, flexShrink: 0, color: "#A9B6B0", fontSize: 12 }}>{fmt(e.date)}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13.5, color: "#33403C" }}>
+                      {e.outcome === "relapse" ? "Срыв — серия сохранена в истории" : e.task}
+                    </div>
+                    <div style={{ fontSize: 12, color: "#A9B6B0", marginTop: 2 }}>
+                      {e.trigger}{e.outcome === "skipped" ? " · пропустил" : ""}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* SOS */}
+      {sos && (
+        <div style={overlay} onClick={() => sosStep !== "breathing" && setSos(false)}>
+          <div style={modalBox} onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setSos(false)} style={{ position: "absolute", top: 16, right: 16, background: "none", border: "none" }}>
+              <Icon name="x" color="#A9B6B0" />
+            </button>
+            {sosStep === "trigger" && (
+              <>
+                <div style={mTitle}>Что сейчас происходит?</div>
+                <div style={mSub}>Выбери, что ближе — подберём, чем заняться.</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 18 }}>
+                  {TRIGGERS.map((t) => (
+                    <button key={t.id} style={tBtn} onClick={() => { setTrigger(t.id); setSosStep("breathing"); }}>{t.label}</button>
+                  ))}
+                </div>
+              </>
+            )}
+            {sosStep === "breathing" && (
+              <>
+                <div style={mTitle}>Сначала — дыхание</div>
+                <div style={mSub}>Следуй за кругом ~40 секунд.</div>
+                <Breathing onDone={onBreathDone} />
+              </>
+            )}
+            {sosStep === "task" && task && (
+              <>
+                <div style={mTitle}>Вместо этого сейчас</div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", background: "#F6F5FA", border: "1px solid #E9E8F0", borderRadius: 16, padding: 18, marginTop: 16 }}>
+                  <div style={{ fontSize: 12, color: "#A9B6B0" }}>{CAT[task.category]}</div>
+                  <TaskAnim anim={task.anim} />
+                  <div style={{ fontSize: 15.5, color: "#33403C", textAlign: "center", lineHeight: 1.4 }}>{task.text}</div>
+                </div>
+                <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+                  <button style={primary} onClick={() => markSos(true)}><Icon name="check" size={16} color="#fff" /> Сделал</button>
+                  <button style={gModal} onClick={() => markSos(false)}>Пропустить</button>
+                </div>
+              </>
+            )}
+            {sosStep === "done" && (
+              <>
+                <Icon name="spark" size={24} />
+                <div style={{ ...mTitle, marginTop: 10 }}>Записал в дневник</div>
+                <div style={mSub}>Желание — волна. Ты только что переждал одну.</div>
+                <button style={{ ...primary, width: "100%", marginTop: 18 }} onClick={() => setSos(false)}>Готово</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {modal === "morning" && (
+        <div style={overlay} onClick={() => setModal(null)}>
+          <div style={modalBox} onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setModal(null)} style={{ position: "absolute", top: 16, right: 16, background: "none", border: "none" }}>
+              <Icon name="x" color="#A9B6B0" />
+            </button>
+            <div style={mTitle}>Доброе утро</div>
+            <div style={mSub}>Небольшая задача на сегодня.</div>
+            {state.dailyTask && (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", background: "#F6F5FA", border: "1px solid #E9E8F0", borderRadius: 16, padding: 18, marginTop: 16 }}>
+                <div style={{ fontSize: 12, color: "#A9B6B0" }}>{CAT[state.dailyTask.category]}</div>
+                <TaskAnim anim={state.dailyTask.anim} />
+                <div style={{ fontSize: 15.5, color: "#33403C", textAlign: "center", lineHeight: 1.4 }}>{state.dailyTask.text}</div>
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+              <button style={primary} onClick={() => morning("done")}><Icon name="check" size={16} color="#fff" /> Сделаю</button>
+              <button style={gModal} onClick={() => morning("skipped")}>Не сегодня</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modal === "evening" && (
+        <div style={overlay} onClick={() => setModal(null)}>
+          <div style={modalBox} onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setModal(null)} style={{ position: "absolute", top: 16, right: 16, background: "none", border: "none" }}>
+              <Icon name="x" color="#A9B6B0" />
+            </button>
+            <div style={mTitle}>Как прошёл день?</div>
+            <div style={mSub}>Было ли желание выпить?</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 18 }}>
+              <button style={tBtn} onClick={() => evening(false)}>Нет, обошлось</button>
+              <button style={tBtn} onClick={() => evening(true)}>Было, но я справился</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {resetAsk && (
+        <div style={overlay} onClick={() => setResetAsk(false)}>
+          <div style={modalBox} onClick={(e) => e.stopPropagation()}>
+            <div style={mTitle}>Начать серию заново?</div>
+            <div style={mSub}>Текущая серия — {days} {daysWord(days)} — сохранится в дневнике. Это не провал.</div>
+            <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+              <button style={primary} onClick={relapse}>Да, заново</button>
+              <button style={gModal} onClick={() => setResetAsk(false)}>Отмена</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
